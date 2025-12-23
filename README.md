@@ -104,8 +104,11 @@ cargo build --release
 ### Usage
 
 ```bash
-# Basic usage
+# Run a single command
 safe-shell "command to run"
+
+# Interactive mode - drops into a sandboxed bash shell
+safe-shell
 
 # Verbose mode (shows sandbox setup)
 safe-shell -v "command"
