@@ -34,7 +34,7 @@ def run_agent(verbose: bool = False) -> None:
 
     # Start with a user message to kick off the triage
     messages = [
-        {"role": "user", "content": "Please triage this Linux system and provide a comprehensive report."}
+        {"role": "user", "content": "Please triage this Linux system according to instructions. Once you've completed the triage, provide a comprehensive report (max 500 words)."}
     ]
     tools = [BASH_TOOL]
 
@@ -46,8 +46,8 @@ def run_agent(verbose: bool = False) -> None:
     while True:
         # Stream the response
         with client.messages.stream(
-            model="claude-sonnet-4-20250514",
-            max_tokens=4096,
+            model="claude-haiku-4-5",
+            max_tokens=8096,
             system=SYSTEM_PROMPT,
             tools=tools,
             messages=messages,
