@@ -232,6 +232,8 @@ We manually executed the malicious commands to verify sandbox enforcement:
 
 4. **Some paths may be missing** — The Landlock allowlist may need tuning for specific tools that access unusual paths.
 
+5. **Interactive shell Ctrl+C is broken** — Blocking `kill()` breaks readline's signal handling. When you press Ctrl+C mid-line, the cursor moves but the line isn't cleared. This is because readline uses `kill(getpid(), SIGINT)` to re-raise signals after cleanup. Workaround: use `bash --noediting` or just accept the quirk. This doesn't affect LLM agents since they use single-command execution.
+
 ## Running the Agent
 
 ```bash

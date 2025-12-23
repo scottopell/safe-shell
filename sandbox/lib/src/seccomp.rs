@@ -38,7 +38,10 @@ pub fn setup_seccomp(verbose: bool) -> Result<()> {
 
     // Syscalls to block - these return EPERM when called
     let blocked_syscalls = [
-        // Process manipulation - can't kill or trace other processes
+        // Process signals - can't signal other processes
+        // NOTE: This breaks readline's Ctrl+C handling in interactive mode because
+        // readline uses kill(getpid(), SIGINT) to re-raise signals after cleanup.
+        // This is acceptable since LLM agents don't use interactive shells.
         ("kill", ScmpSyscall::from_name("kill")),
         ("tkill", ScmpSyscall::from_name("tkill")),
         ("tgkill", ScmpSyscall::from_name("tgkill")),
