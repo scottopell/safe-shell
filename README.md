@@ -229,15 +229,29 @@ We manually executed the malicious commands to verify sandbox enforcement:
 
 4. **Some paths may be missing** — The Landlock allowlist may need tuning for specific tools that access unusual paths.
 
+## Running the Agent
+
+```bash
+# In the VM
+limactl shell safe-shell-vm
+
+# Set API key (or create /workspace/.env with ANTHROPIC_API_KEY=sk-...)
+export ANTHROPIC_API_KEY='sk-...'
+
+# Run the triage agent
+cd /workspace/agent
+./run.sh
+```
+
+The agent uses Claude to systematically triage the Linux system, executing commands through the sandboxed safe-shell.
+
 ## Future Work
 
-- [ ] Integration with LLM API (forward commands from agent to sandbox)
 - [ ] Session support (persistent shell with state)
-- [ ] Output streaming
-- [ ] Timeout handling at the API level
 - [ ] Audit logging of all commands
 - [ ] Network namespace for complete network isolation
 - [ ] Update to Landlock crate with UDP support when available
+- [ ] More sophisticated agent prompts for different use cases
 
 ## Requirements
 
