@@ -232,7 +232,16 @@ We manually executed the malicious commands to verify sandbox enforcement:
 
 4. **Some paths may be missing** — The Landlock allowlist may need tuning for specific tools that access unusual paths.
 
-5. **Interactive shell Ctrl+C is broken** — Blocking `kill()` breaks readline's signal handling. When you press Ctrl+C mid-line, the cursor moves but the line isn't cleared. This is because readline uses `kill(getpid(), SIGINT)` to re-raise signals after cleanup. Workaround: use `bash --noediting` or just accept the quirk. This doesn't affect LLM agents since they use single-command execution.
+5. **`kill()` syscall is blocked** — seccomp blocks `kill`, `tkill`, `tgkill` to prevent signaling other processes. This has several side effects:
+
+   | Scenario | Behavior |
+   |----------|----------|
+   | `timeout 5 cmd` | Child runs to completion (timeout can't kill it) |
+   | Python `subprocess.run(..., timeout=N)` | Raises `PermissionError` instead of killing child |
+   | Shell script `kill $PID` | Returns "Operation not permitted", child orphaned |
+   | Interactive readline Ctrl+C | Cursor moves but line not cleared (re-raise fails) |
+
+   **Why this is acceptable**: LLM agents use single-command execution, not process management. Commands that hang will eventually hit the 30s CPU rlimit. The agent wrapper can kill the entire process tree from outside the sandbox if needed.
 
 ## Running the Agent
 
