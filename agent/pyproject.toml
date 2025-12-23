@@ -1,0 +1,11 @@
+[project]
+name = "linux-triage-agent"
+version = "0.1.0"
+description = "LLM agent for Linux system triage using sandboxed Bash"
+requires-python = ">=3.10"
+dependencies = [
+    "anthropic>=0.40.0",
+]
+
+[project.scripts]
+triage-agent = "src.main:main"

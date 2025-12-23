@@ -1,0 +1,24 @@
+[package]
+name = "safe-shell"
+version = "0.1.0"
+edition = "2021"
+description = "Landlock-sandboxed shell for safe LLM command execution"
+
+[[bin]]
+name = "safe-shell"
+path = "src/main.rs"
+
+[dependencies]
+# Our sandbox library
+safe-shell-lib = { path = "../lib" }
+
+# Error handling
+anyhow = "1.0"
+
+# CLI argument parsing
+clap = { version = "4.5", features = ["derive"] }
+
+[dev-dependencies]
+# For testing
+assert_cmd = "2.0"
+predicates = "3.1"

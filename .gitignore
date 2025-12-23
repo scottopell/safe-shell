@@ -2,6 +2,11 @@
 /sandbox/target/
 /sandbox/Cargo.lock
 
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
 # Claude Code state
 .claude/
 
@@ -20,3 +25,8 @@
 
 # Logs
 *.log
+
+# Environment files (contain secrets)
+.env
+.env.*
+!.env.example

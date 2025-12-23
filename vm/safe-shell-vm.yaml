@@ -39,7 +39,9 @@ provision:
         net-tools \
         iproute \
         util-linux \
-        strace
+        strace \
+        python3 \
+        python3-pip
 
       # Show kernel version and Landlock support
       echo "=== Kernel version ==="
@@ -71,6 +73,13 @@ message: |
   Landlock: Run 'cat /sys/kernel/security/landlock/abi_version' to check ABI version
 
   Workspace mounted at: /workspace
+
   To build the sandbox:
     cd /workspace/sandbox
-    cargo build
+    cargo build --release
+
+  To run the triage agent:
+    export ANTHROPIC_API_KEY='sk-...'
+    cd /workspace/agent
+    pip3 install -r requirements.txt
+    python3 -m src.main
