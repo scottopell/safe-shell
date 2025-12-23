@@ -40,7 +40,8 @@ Blocks dangerous syscalls:
 | File writes | ❌ Blocked | Landlock + RLIMIT_FSIZE |
 | TCP network | ❌ Blocked | Landlock |
 | UDP network | ❌ Blocked | seccomp |
-| kill/ptrace | ❌ Blocked | seccomp |
+| Signal other processes | ❌ Blocked | seccomp (self-signal allowed) |
+| ptrace | ❌ Blocked | seccomp |
 | Privilege escalation | ❌ Blocked | seccomp |
 | Memory exhaustion | ❌ Blocked | RLIMIT_AS |
 | Fork bombs | ❌ Blocked | RLIMIT_NPROC |
@@ -232,14 +233,14 @@ We manually executed the malicious commands to verify sandbox enforcement:
 
 4. **Some paths may be missing** — The Landlock allowlist may need tuning for specific tools that access unusual paths.
 
-5. **`kill()` syscall is blocked** — seccomp blocks `kill`, `tkill`, `tgkill` to prevent signaling other processes. This has several side effects:
+5. **`kill()` partially restricted** — seccomp allows the main bash process to signal itself (fixing readline Ctrl+C), but blocks signaling other processes. Child processes cannot signal anyone (including themselves) because the seccomp filter is set up with the parent's PID hardcoded.
 
    | Scenario | Behavior |
    |----------|----------|
+   | Interactive readline Ctrl+C | ✅ Works (main bash can self-signal) |
    | `timeout 5 cmd` | Child runs to completion (timeout can't kill it) |
    | Python `subprocess.run(..., timeout=N)` | Raises `PermissionError` instead of killing child |
-   | Shell script `kill $PID` | Returns "Operation not permitted", child orphaned |
-   | Interactive readline Ctrl+C | Cursor moves but line not cleared (re-raise fails) |
+   | Shell script `kill $PID` | Returns "Operation not permitted" for non-self PIDs |
 
    **Why this is acceptable**: LLM agents use single-command execution, not process management. Commands that hang will eventually hit the 30s CPU rlimit. The agent wrapper can kill the entire process tree from outside the sandbox if needed.
 

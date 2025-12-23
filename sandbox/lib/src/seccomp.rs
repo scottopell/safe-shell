@@ -36,15 +36,49 @@ pub fn setup_seccomp(verbose: bool) -> Result<()> {
         }
     }
 
-    // Syscalls to block - these return EPERM when called
+    // Signal syscalls: allow self-signaling, block everything else
+    // This fixes readline's Ctrl+C handling while still blocking signals to other processes.
+    //
+    // Limitation: This only allows the initial bash process to signal itself.
+    // Child processes (with different PIDs) still cannot signal themselves or others.
+    // This is acceptable because:
+    // - Interactive readline works (the main use case)
+    // - LLM agents use single-command execution, not process management
+    // - timeout/subprocess timeouts in children still won't work, but that's rare
+    let self_pid = std::process::id() as u64;
+
+    // For each signal syscall: block all EXCEPT when targeting self
+    // We use NotEqual to block, since default action is Allow
+    // kill(pid, sig) - block when pid != self
+    if let Ok(kill_syscall) = ScmpSyscall::from_name("kill") {
+        let cmp = ScmpArgCompare::new(0, ScmpCompareOp::NotEqual, self_pid);
+        filter
+            .add_rule_conditional(ScmpAction::Errno(libc::EPERM), kill_syscall, &[cmp])
+            .context("Failed to add kill block rule")?;
+    }
+
+    // tkill(tid, sig) - block when tid != self
+    if let Ok(tkill_syscall) = ScmpSyscall::from_name("tkill") {
+        let cmp = ScmpArgCompare::new(0, ScmpCompareOp::NotEqual, self_pid);
+        filter
+            .add_rule_conditional(ScmpAction::Errno(libc::EPERM), tkill_syscall, &[cmp])
+            .context("Failed to add tkill block rule")?;
+    }
+
+    // tgkill(tgid, tid, sig) - block when tgid != self
+    if let Ok(tgkill_syscall) = ScmpSyscall::from_name("tgkill") {
+        let cmp = ScmpArgCompare::new(0, ScmpCompareOp::NotEqual, self_pid);
+        filter
+            .add_rule_conditional(ScmpAction::Errno(libc::EPERM), tgkill_syscall, &[cmp])
+            .context("Failed to add tgkill block rule")?;
+    }
+
+    if verbose {
+        eprintln!("[safe-shell] Signal syscalls: allowed for PID {}, blocked for others", self_pid);
+    }
+
+    // Syscalls to block unconditionally - these return EPERM when called
     let blocked_syscalls = [
-        // Process signals - can't signal other processes
-        // NOTE: This breaks readline's Ctrl+C handling in interactive mode because
-        // readline uses kill(getpid(), SIGINT) to re-raise signals after cleanup.
-        // This is acceptable since LLM agents don't use interactive shells.
-        ("kill", ScmpSyscall::from_name("kill")),
-        ("tkill", ScmpSyscall::from_name("tkill")),
-        ("tgkill", ScmpSyscall::from_name("tgkill")),
         ("ptrace", ScmpSyscall::from_name("ptrace")),
 
         // System state changes
