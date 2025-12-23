@@ -1,0 +1,22 @@
+# Rust
+/sandbox/target/
+/sandbox/Cargo.lock
+
+# Claude Code state
+.claude/
+
+# Lima VM state (managed externally)
+*.lima/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+
+# Logs
+*.log

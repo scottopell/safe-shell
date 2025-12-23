@@ -1,0 +1,76 @@
+# Lima VM configuration for safe-shell development
+# Uses Fedora 41 for kernel 6.11+ (latest Landlock ABI support)
+
+# VM images - Fedora 41 for modern kernel
+images:
+  - location: "https://download.fedoraproject.org/pub/fedora/linux/releases/41/Cloud/x86_64/images/Fedora-Cloud-Base-Generic-41-1.4.x86_64.qcow2"
+    arch: "x86_64"
+  - location: "https://download.fedoraproject.org/pub/fedora/linux/releases/41/Cloud/aarch64/images/Fedora-Cloud-Base-Generic-41-1.4.aarch64.qcow2"
+    arch: "aarch64"
+
+# Resource allocation
+cpus: 2
+memory: "4GiB"
+disk: "20GiB"
+
+# Mount the workspace into the VM
+mounts:
+  - location: "~"
+    writable: false
+  - location: "/Users/scott.opell/dev/claude/2025-dec-safe-shell-llm"
+    mountPoint: "/workspace"
+    writable: true
+
+# Provisioning script - install Rust and dependencies
+provision:
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+
+      # Install development dependencies
+      dnf install -y \
+        gcc \
+        make \
+        pkg-config \
+        libseccomp-devel \
+        git \
+        procps-ng \
+        net-tools \
+        iproute \
+        util-linux \
+        strace
+
+      # Show kernel version and Landlock support
+      echo "=== Kernel version ==="
+      uname -r
+
+      echo "=== Landlock ABI version ==="
+      cat /sys/kernel/security/landlock/abi_version 2>/dev/null || echo "Landlock not available"
+
+  - mode: user
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+
+      # Install Rust via rustup
+      if ! command -v rustc &> /dev/null; then
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+        source "$HOME/.cargo/env"
+      fi
+
+      # Verify installation
+      rustc --version
+      cargo --version
+
+# Message shown after VM starts
+message: |
+  Safe-shell development VM is ready!
+
+  Kernel: Run 'uname -r' to verify kernel version
+  Landlock: Run 'cat /sys/kernel/security/landlock/abi_version' to check ABI version
+
+  Workspace mounted at: /workspace
+  To build the sandbox:
+    cd /workspace/sandbox
+    cargo build
