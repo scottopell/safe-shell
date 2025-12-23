@@ -42,18 +42,9 @@ pub fn setup_landlock(verbose: bool) -> Result<()> {
         .context("Failed to create Landlock ruleset")?;
 
     // Paths to allow read-only access
+    // We allow read access to the entire filesystem - Landlock still blocks writes
     let read_only_paths: &[&str] = &[
-        "/bin", "/usr/bin", "/sbin", "/usr/sbin", // Executables
-        "/lib", "/lib64", "/usr/lib", "/usr/lib64", // Libraries
-        "/etc",       // Configuration (read-only)
-        "/proc",      // Process info (ps, top, etc.)
-        "/sys",       // System info
-        "/run",       // Runtime data (read-only)
-        "/var",       // Variable data (read-only for logs, etc.)
-        "/home",      // Home directories (read-only)
-        "/root",      // Root home (read-only)
-        "/tmp",       // Temp (read-only - we don't allow writes)
-        "/opt",       // Optional packages
+        "/", // Root - allows ls /, traversal everywhere (read-only)
     ];
 
     // Add read-only rules using the helper
@@ -63,10 +54,7 @@ pub fn setup_landlock(verbose: bool) -> Result<()> {
         .context("Failed to add read-only path rules")?;
 
     if verbose {
-        eprintln!(
-            "[safe-shell] Added read-only access to: {}",
-            read_only_paths.join(", ")
-        );
+        eprintln!("[safe-shell] Added read-only access to: / (entire filesystem)");
     }
 
     // Add /dev with read/write for PTY access
