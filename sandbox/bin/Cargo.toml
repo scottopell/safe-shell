@@ -18,6 +18,12 @@ anyhow = "1.0"
 # CLI argument parsing
 clap = { version = "4.5", features = ["derive"] }
 
+# Unix process control (fork, setpgid, kill, waitpid)
+nix = { version = "0.29", features = ["process", "signal"] }
+
+# libc for exit codes
+libc = "0.2"
+
 [dev-dependencies]
 # For testing
 assert_cmd = "2.0"
