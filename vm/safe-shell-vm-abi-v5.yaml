@@ -1,11 +1,11 @@
 # Lima VM configuration for safe-shell development
-# Uses Fedora 42 for kernel 6.14+ (Landlock ABI v6 with signal/socket scoping)
+# Uses Fedora 41 for kernel 6.11+ (latest Landlock ABI support)
 
-# VM images - Fedora 42 for kernel 6.14+ with full Landlock ABI v6 support
+# VM images - Fedora 41 for modern kernel
 images:
-  - location: "https://download.fedoraproject.org/pub/fedora/linux/releases/42/Cloud/x86_64/images/Fedora-Cloud-Base-Generic-42-1.1.x86_64.qcow2"
+  - location: "https://download.fedoraproject.org/pub/fedora/linux/releases/41/Cloud/x86_64/images/Fedora-Cloud-Base-Generic-41-1.4.x86_64.qcow2"
     arch: "x86_64"
-  - location: "https://download.fedoraproject.org/pub/fedora/linux/releases/42/Cloud/aarch64/images/Fedora-Cloud-Base-Generic-42-1.1.aarch64.qcow2"
+  - location: "https://download.fedoraproject.org/pub/fedora/linux/releases/41/Cloud/aarch64/images/Fedora-Cloud-Base-Generic-41-1.4.aarch64.qcow2"
     arch: "aarch64"
 
 # Resource allocation
@@ -67,10 +67,10 @@ provision:
 
 # Message shown after VM starts
 message: |
-  Safe-shell development VM is ready! (Fedora 42 - Landlock ABI v6)
+  Safe-shell development VM is ready!
 
-  Kernel: Run 'uname -r' to verify kernel version (should be 6.14+)
-  Landlock: Run 'cat /sys/kernel/security/landlock/abi_version' to check ABI version (should be 6)
+  Kernel: Run 'uname -r' to verify kernel version
+  Landlock: Run 'cat /sys/kernel/security/landlock/abi_version' to check ABI version
 
   Workspace mounted at: /workspace
 
@@ -78,6 +78,8 @@ message: |
     cd /workspace/sandbox
     cargo build --release
 
-  To test signal scoping:
-    ./target/release/safe-shell -v 'echo hello'
-    # Should show "Signal scoping: enabled (kernel 6.12+)"
+  To run the triage agent:
+    export ANTHROPIC_API_KEY='sk-...'
+    cd /workspace/agent
+    pip3 install -r requirements.txt
+    python3 -m src.main

@@ -33,7 +33,7 @@ LLMs already know POSIX. Custom tool APIs (`read_file`, `list_processes`) force 
 ## Quick Start: safe-shell
 
 ```bash
-# macOS: create Lima VM (or use any Linux with kernel 6.2+)
+# macOS: create Lima VM (Fedora 42 with kernel 6.14+)
 cd vm && ./create.sh
 limactl shell safe-shell-vm
 
@@ -42,6 +42,10 @@ cd /workspace/sandbox && cargo build --release
 ./target/release/safe-shell "ps aux"           # works
 ./target/release/safe-shell "touch /tmp/test"  # blocked
 ./target/release/safe-shell "curl example.com" # blocked
+
+# Verify Landlock ABI v6 signal scoping
+./target/release/safe-shell -v "timeout 1 sleep 10"
+# Should show: "Signal scoping: enabled (kernel 6.12+)"
 ```
 
 ## Quick Start: "Where Am I" Agent
@@ -62,9 +66,17 @@ Three layers of defense, all allowlist-based:
 
 | Layer | What it does |
 |-------|--------------|
-| **Landlock** | Read-only filesystem, no TCP connect/bind |
-| **seccomp** | Blocks kill, ptrace, setuid, mount, module loading, UDP |
+| **Landlock** | Read-only filesystem, no TCP connect/bind, signal/socket scoping (kernel 6.12+) |
+| **seccomp** | Blocks ptrace, setuid, mount, module loading, UDP; signal filtering on older kernels |
 | **rlimits** | 512MB memory, 0 file size, 64 processes, 30s CPU |
+
+### Kernel Feature Matrix
+
+| Kernel | Landlock ABI | Features |
+|--------|--------------|----------|
+| 6.12+  | v6 | Full signal scoping (child processes can signal each other) |
+| 6.7-6.11 | v4-v5 | Filesystem + network, seccomp signal fallback |
+| 5.13-6.6 | v1-v3 | Filesystem only, seccomp signal fallback |
 
 ### What's Blocked
 
@@ -95,13 +107,15 @@ All 9 attack vectors (file writes, network exfil, reverse shells, privilege esca
 
 - **DNS works** — Resolves via systemd-resolved (Unix socket), not direct UDP
 - **UDP via seccomp** — Landlock crate doesn't expose UDP yet; using seccomp as workaround
-- **kill() partial** — Main process can self-signal (for Ctrl+C), but can't signal others
+- **Signal scoping (kernel <6.12)** — On older kernels, only the main bash process can signal itself; child processes cannot signal each other (e.g., `timeout` can't kill subprocesses). Kernel 6.12+ with Landlock ABI v6 fully solves this.
 
 ---
 
 ## Requirements
 
-- Linux kernel 6.2+ (Landlock ABI v3)
+- Linux kernel 5.13+ (minimum for Landlock)
+  - 6.12+ recommended for full signal scoping (Landlock ABI v6)
+  - 6.7+ for network restrictions (Landlock ABI v4)
 - Rust 1.70+
 - libseccomp-devel
 

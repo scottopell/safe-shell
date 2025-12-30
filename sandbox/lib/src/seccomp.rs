@@ -3,12 +3,17 @@
 use anyhow::{Context, Result};
 use libseccomp::{ScmpAction, ScmpArgCompare, ScmpCompareOp, ScmpFilterContext, ScmpSyscall};
 
+use crate::SandboxCapabilities;
+
 /// Set up seccomp-bpf syscall filtering
 ///
 /// We use a default-allow policy and block specific dangerous syscalls.
 /// This is less secure than a default-deny allowlist, but much more practical
 /// for running arbitrary shell commands.
-pub fn setup_seccomp(verbose: bool) -> Result<()> {
+///
+/// If Landlock signal scoping is enabled (kernel 6.12+), we skip the PID-based
+/// signal filtering workaround since Landlock handles it better.
+pub fn setup_seccomp(verbose: bool, caps: &SandboxCapabilities) -> Result<()> {
     // Create a filter with default action: ALLOW
     // We'll explicitly block dangerous syscalls
     let mut filter =
@@ -36,45 +41,52 @@ pub fn setup_seccomp(verbose: bool) -> Result<()> {
         }
     }
 
-    // Signal syscalls: allow self-signaling, block everything else
-    // This fixes readline's Ctrl+C handling while still blocking signals to other processes.
+    // Signal syscall filtering: only needed if Landlock signal scoping is unavailable
     //
-    // Limitation: This only allows the initial bash process to signal itself.
-    // Child processes (with different PIDs) still cannot signal themselves or others.
-    // This is acceptable because:
-    // - Interactive readline works (the main use case)
-    // - LLM agents use single-command execution, not process management
-    // - timeout/subprocess timeouts in children still won't work, but that's rare
-    let self_pid = std::process::id() as u64;
+    // On kernel 6.12+ with Landlock ABI v6, Scope::Signal handles this better:
+    // - Allows all processes in the Landlock domain to signal each other
+    // - Blocks signals to processes outside the domain
+    //
+    // On older kernels, we fall back to PID-based filtering:
+    // - Only allows the initial bash process to signal itself
+    // - Child processes cannot signal themselves or others (a known limitation)
+    if caps.signal_scoping_enabled {
+        if verbose {
+            eprintln!("[safe-shell] Signal filtering: delegated to Landlock (kernel 6.12+)");
+        }
+    } else {
+        // Fallback: PID-based signal filtering
+        let self_pid = std::process::id() as u64;
 
-    // For each signal syscall: block all EXCEPT when targeting self
-    // We use NotEqual to block, since default action is Allow
-    // kill(pid, sig) - block when pid != self
-    if let Ok(kill_syscall) = ScmpSyscall::from_name("kill") {
-        let cmp = ScmpArgCompare::new(0, ScmpCompareOp::NotEqual, self_pid);
-        filter
-            .add_rule_conditional(ScmpAction::Errno(libc::EPERM), kill_syscall, &[cmp])
-            .context("Failed to add kill block rule")?;
-    }
+        // For each signal syscall: block all EXCEPT when targeting self
+        // We use NotEqual to block, since default action is Allow
+        // kill(pid, sig) - block when pid != self
+        if let Ok(kill_syscall) = ScmpSyscall::from_name("kill") {
+            let cmp = ScmpArgCompare::new(0, ScmpCompareOp::NotEqual, self_pid);
+            filter
+                .add_rule_conditional(ScmpAction::Errno(libc::EPERM), kill_syscall, &[cmp])
+                .context("Failed to add kill block rule")?;
+        }
 
-    // tkill(tid, sig) - block when tid != self
-    if let Ok(tkill_syscall) = ScmpSyscall::from_name("tkill") {
-        let cmp = ScmpArgCompare::new(0, ScmpCompareOp::NotEqual, self_pid);
-        filter
-            .add_rule_conditional(ScmpAction::Errno(libc::EPERM), tkill_syscall, &[cmp])
-            .context("Failed to add tkill block rule")?;
-    }
+        // tkill(tid, sig) - block when tid != self
+        if let Ok(tkill_syscall) = ScmpSyscall::from_name("tkill") {
+            let cmp = ScmpArgCompare::new(0, ScmpCompareOp::NotEqual, self_pid);
+            filter
+                .add_rule_conditional(ScmpAction::Errno(libc::EPERM), tkill_syscall, &[cmp])
+                .context("Failed to add tkill block rule")?;
+        }
 
-    // tgkill(tgid, tid, sig) - block when tgid != self
-    if let Ok(tgkill_syscall) = ScmpSyscall::from_name("tgkill") {
-        let cmp = ScmpArgCompare::new(0, ScmpCompareOp::NotEqual, self_pid);
-        filter
-            .add_rule_conditional(ScmpAction::Errno(libc::EPERM), tgkill_syscall, &[cmp])
-            .context("Failed to add tgkill block rule")?;
-    }
+        // tgkill(tgid, tid, sig) - block when tgid != self
+        if let Ok(tgkill_syscall) = ScmpSyscall::from_name("tgkill") {
+            let cmp = ScmpArgCompare::new(0, ScmpCompareOp::NotEqual, self_pid);
+            filter
+                .add_rule_conditional(ScmpAction::Errno(libc::EPERM), tgkill_syscall, &[cmp])
+                .context("Failed to add tgkill block rule")?;
+        }
 
-    if verbose {
-        eprintln!("[safe-shell] Signal syscalls: allowed for PID {}, blocked for others", self_pid);
+        if verbose {
+            eprintln!("[safe-shell] Signal filtering: PID-based workaround (PID {})", self_pid);
+        }
     }
 
     // Syscalls to block unconditionally - these return EPERM when called
