@@ -81,11 +81,12 @@ pub fn setup_landlock(verbose: bool) -> Result<SandboxCapabilities> {
     }
 
     // Add /dev/shm with file creation for POSIX shared memory and semaphores
-    // This enables Python multiprocessing (Queue, Pool, ProcessPoolExecutor)
+    // This enables Python multiprocessing (Queue, Pool, ProcessPoolExecutor, shared_memory)
     // Security: /dev/shm is tmpfs (memory-only, no persistence), low risk
     let shm_access = AccessFs::ReadFile
         | AccessFs::ReadDir
         | AccessFs::WriteFile
+        | AccessFs::Truncate   // ftruncate for shared_memory.SharedMemory
         | AccessFs::MakeReg    // create semaphore/shm files
         | AccessFs::RemoveFile; // cleanup when done
     let shm_rules = path_beneath_rules(&["/dev/shm"], shm_access);
