@@ -250,53 +250,19 @@ class TestSignalScoping(unittest.TestCase):
         )
 
 
-class TestSocketScoping(unittest.TestCase):
-    """Test Landlock abstract Unix socket scoping (kernel 6.12+)."""
+class TestUnixSocketBlocking(unittest.TestCase):
+    """Test that Unix domain sockets are blocked entirely via seccomp."""
 
-    server_process = None
-
-    def setUp(self):
-        caps = get_caps()
-        if not caps.socket_scoping_enabled:
-            self.skipTest("Socket scoping requires kernel 6.12+ (Landlock ABI v6)")
-
-        # Start the abstract socket server
-        server_script = TESTS_DIR / "abstract_socket_server.py"
-        if not server_script.exists():
-            self.skipTest(f"Server script not found: {server_script}")
-
-        self.server_process = subprocess.Popen(
-            ["python3", str(server_script)],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+    def test_unix_socket_creation_blocked(self):
+        """Creating AF_UNIX sockets should be blocked by seccomp."""
+        code, stdout, stderr = run_sandboxed(
+            "python3 -c \"import socket; socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)\""
         )
-        # Wait for server to start listening
-        time.sleep(0.5)
-
-    def tearDown(self):
-        if self.server_process:
-            self.server_process.terminate()
-            try:
-                self.server_process.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                self.server_process.kill()
-            # Close file handles to avoid ResourceWarning
-            if self.server_process.stdout:
-                self.server_process.stdout.close()
-            if self.server_process.stderr:
-                self.server_process.stderr.close()
-
-    def test_abstract_socket_blocked(self):
-        """Connection to abstract Unix socket outside sandbox should be blocked."""
-        client_script = TESTS_DIR / "abstract_socket_client.py"
-        if not client_script.exists():
-            self.skipTest(f"Client script not found: {client_script}")
-
-        code, stdout, stderr = run_sandboxed(f"python3 {client_script}")
+        self.assertNotEqual(code, 0, "Expected non-zero exit code for AF_UNIX socket")
         combined = stdout + stderr
         self.assertIn(
-            "BLOCKED", combined,
-            f"Expected abstract socket connection to be blocked, got: {combined}",
+            "Operation not permitted", combined,
+            f"Expected EPERM for AF_UNIX socket creation, got: {combined}",
         )
 
 
@@ -311,7 +277,7 @@ class PrettyTestResult(unittest.TestResult):
         "TestSeccomp": ("seccomp Syscalls", "Dangerous syscall filtering"),
         "TestRlimits": ("Resource Limits", "Memory, CPU, process limits"),
         "TestSignalScoping": ("Signal Scoping", "Cross-process signal blocking"),
-        "TestSocketScoping": ("Socket Scoping", "Abstract Unix socket isolation"),
+        "TestUnixSocketBlocking": ("Unix Socket Blocking", "AF_UNIX socket isolation"),
     }
 
     def __init__(self, stream, descriptions, verbosity):

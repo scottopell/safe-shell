@@ -42,5 +42,22 @@ pub fn setup_rlimits(verbose: bool) -> Result<()> {
         );
     }
 
+    // NOFILE: Limit open file descriptors to prevent FD exhaustion
+    let max_files = 256;
+    setrlimit(Resource::RLIMIT_NOFILE, max_files, max_files)
+        .context("Failed to set RLIMIT_NOFILE")?;
+    if verbose {
+        eprintln!(
+            "[safe-shell] Set RLIMIT_NOFILE = {} (max open files)",
+            max_files
+        );
+    }
+
+    // CORE = 0: Disable core dumps to prevent information leakage
+    setrlimit(Resource::RLIMIT_CORE, 0, 0).context("Failed to set RLIMIT_CORE")?;
+    if verbose {
+        eprintln!("[safe-shell] Set RLIMIT_CORE = 0 (no core dumps)");
+    }
+
     Ok(())
 }

@@ -41,6 +41,32 @@ pub fn setup_seccomp(verbose: bool, caps: &SandboxCapabilities) -> Result<()> {
         }
     }
 
+    // Block connect() on Unix domain sockets (AF_UNIX = 1)
+    // This prevents communication with host services via path-based Unix sockets
+    // like /run/dbus/system_bus_socket or /var/run/docker.sock
+    //
+    // Note: Landlock's Scope::AbstractUnixSocket only blocks *abstract* sockets
+    // (those with null byte prefix), not filesystem-based Unix sockets.
+    //
+    // We check the socket's domain by looking at the sa_family field of the
+    // sockaddr structure passed to connect(). For AF_UNIX, sa_family = 1.
+    // connect(sockfd, addr, addrlen) - addr->sa_family is at offset 0, 2 bytes
+    //
+    // Unfortunately, seccomp can only inspect syscall arguments (registers),
+    // not memory pointed to by arguments. So we block AF_UNIX socket creation instead.
+    const AF_UNIX: u64 = 1;
+
+    if let Ok(socket_syscall) = ScmpSyscall::from_name("socket") {
+        // Block socket(AF_UNIX, ...) - prevents creating Unix domain sockets entirely
+        let cmp = ScmpArgCompare::new(0, ScmpCompareOp::Equal, AF_UNIX);
+        filter
+            .add_rule_conditional(ScmpAction::Errno(libc::EPERM), socket_syscall, &[cmp])
+            .context("Failed to add AF_UNIX socket block rule")?;
+        if verbose {
+            eprintln!("[safe-shell] Blocked Unix domain socket creation (AF_UNIX)");
+        }
+    }
+
     // Signal syscall filtering: only needed if Landlock signal scoping is unavailable
     //
     // On kernel 6.12+ with Landlock ABI v6, Scope::Signal handles this better:
@@ -116,6 +142,12 @@ pub fn setup_seccomp(verbose: bool, caps: &SandboxCapabilities) -> Result<()> {
         ("setresuid", ScmpSyscall::from_name("setresuid")),
         ("setresgid", ScmpSyscall::from_name("setresgid")),
         ("setgroups", ScmpSyscall::from_name("setgroups")),
+
+        // Security hardening - block exploitation helpers
+        // personality() can disable ASLR (ADDR_NO_RANDOMIZE), making exploitation easier
+        ("personality", ScmpSyscall::from_name("personality")),
+        // prctl() can enable core dumps (PR_SET_DUMPABLE), set process name, etc.
+        ("prctl", ScmpSyscall::from_name("prctl")),
     ];
 
     let mut blocked_count = 0;
