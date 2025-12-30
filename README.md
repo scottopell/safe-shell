@@ -67,8 +67,8 @@ Three layers of defense, all allowlist-based:
 | Layer | What it does |
 |-------|--------------|
 | **Landlock** | Read-only filesystem, no TCP connect/bind, signal/socket scoping (kernel 6.12+) |
-| **seccomp** | Blocks ptrace, setuid, mount, module loading, UDP; signal filtering on older kernels |
-| **rlimits** | 512MB memory, 0 file size, 64 processes, 30s CPU |
+| **seccomp** | Blocks ptrace, setuid, mount, module loading, UDP, Unix sockets, personality, prctl |
+| **rlimits** | 512MB memory, 0 file size, 64 processes, 30s CPU, 256 open files, no core dumps |
 
 ### Kernel Feature Matrix
 
@@ -87,6 +87,7 @@ Three layers of defense, all allowlist-based:
 | `python3 -c "os.setuid(0)"` | Operation not permitted |
 | `kill -9 1` | Operation not permitted |
 | Fork bomb / memory exhaustion | rlimit kills process |
+| Unix socket to dbus/docker | Operation not permitted |
 
 Even if an attacker achieves prompt injection and the model complies, the sandbox blocks exfiltration and mutation.
 
@@ -105,8 +106,8 @@ All 9 attack vectors (file writes, network exfil, reverse shells, privilege esca
 
 ## Known Limitations
 
-- **DNS works** — Resolves via systemd-resolved (Unix socket), not direct UDP
-- **UDP via seccomp** — Landlock network restrictions are TCP-only at the kernel level; seccomp blocks UDP socket creation
+- **No DNS** — Unix sockets are blocked, so systemd-resolved/nscd lookups fail. Use IP addresses directly.
+- **No Unix socket IPC** — All AF_UNIX sockets blocked to prevent host service communication (dbus, docker, etc.)
 - **Signal scoping (kernel <6.12)** — On older kernels, only the main bash process can signal itself; child processes cannot signal each other (e.g., `timeout` can't kill subprocesses). Kernel 6.12+ with Landlock ABI v6 fully solves this.
 
 ---
