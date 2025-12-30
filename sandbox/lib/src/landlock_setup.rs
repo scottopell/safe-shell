@@ -78,6 +78,23 @@ pub fn setup_landlock(verbose: bool) -> Result<SandboxCapabilities> {
 
     if verbose {
         eprintln!("[safe-shell] Added read/write access to: /dev (for PTY)");
+    }
+
+    // Add /dev/shm with file creation for POSIX shared memory and semaphores
+    // This enables Python multiprocessing (Queue, Pool, ProcessPoolExecutor)
+    // Security: /dev/shm is tmpfs (memory-only, no persistence), low risk
+    let shm_access = AccessFs::ReadFile
+        | AccessFs::ReadDir
+        | AccessFs::WriteFile
+        | AccessFs::MakeReg    // create semaphore/shm files
+        | AccessFs::RemoveFile; // cleanup when done
+    let shm_rules = path_beneath_rules(&["/dev/shm"], shm_access);
+    ruleset = ruleset
+        .add_rules(shm_rules)
+        .context("Failed to add /dev/shm rules")?;
+
+    if verbose {
+        eprintln!("[safe-shell] Added read/write/create access to: /dev/shm (for multiprocessing)");
         eprintln!("[safe-shell] Network access: BLOCKED (no rules added)");
     }
 

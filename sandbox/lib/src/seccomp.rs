@@ -116,9 +116,13 @@ pub fn setup_seccomp(verbose: bool, caps: &SandboxCapabilities) -> Result<()> {
     }
 
     // Syscalls to block unconditionally - these return EPERM when called
+    //
+    // NOTE: ptrace is NOT blocked here. Landlock automatically restricts ptrace
+    // based on domain hierarchy - a sandboxed process can only ptrace targets in
+    // an equal or more restricted domain. This means processes outside the sandbox
+    // cannot be ptraced, but debugging within the sandbox (strace, gdb) works.
+    // See: https://docs.kernel.org/userspace-api/landlock.html
     let blocked_syscalls = [
-        ("ptrace", ScmpSyscall::from_name("ptrace")),
-
         // System state changes
         ("reboot", ScmpSyscall::from_name("reboot")),
         ("sethostname", ScmpSyscall::from_name("sethostname")),

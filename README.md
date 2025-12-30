@@ -66,28 +66,41 @@ Three layers of defense, all allowlist-based:
 
 | Layer | What it does |
 |-------|--------------|
-| **Landlock** | Read-only filesystem, no TCP connect/bind, signal/socket scoping (kernel 6.12+) |
-| **seccomp** | Blocks ptrace, setuid, mount, module loading, UDP, Unix sockets, personality, prctl |
-| **rlimits** | 512MB memory, 0 file size, 64 processes, 30s CPU, 256 open files, no core dumps |
+| **Landlock** | Read-only filesystem, no TCP connect/bind, device ioctl blocked (ABI v5+), signal/socket scoping (ABI v6+), ptrace restricted to sandbox domain |
+| **seccomp** | Blocks setuid, mount, module loading, UDP sockets, Unix sockets, personality, prctl |
+| **rlimits** | 512MB memory, 64KB file size, 64 processes, 30s CPU, 256 open files, no core dumps |
 
 ### Kernel Feature Matrix
 
 | Kernel | Landlock ABI | Features |
 |--------|--------------|----------|
-| 6.12+  | v6 | Full signal scoping (child processes can signal each other) |
-| 6.7-6.11 | v4-v5 | Filesystem + network, seccomp signal fallback |
+| 6.12+  | v6 | Full protection: filesystem, network, ioctl, signal/socket scoping |
+| 6.10-6.11 | v5 | + Device ioctl blocking (TIOCSTI, etc.) |
+| 6.7-6.9 | v4 | Filesystem + network (TCP), seccomp signal fallback |
 | 5.13-6.6 | v1-v3 | Filesystem only, seccomp signal fallback |
+
+**Recommended:** Kernel 6.10+ for ioctl protection, 6.12+ for full signal scoping.
 
 ### What's Blocked
 
 | Attack | Result |
 |--------|--------|
-| `echo test > /tmp/x` | Permission denied |
-| `curl https://evil.com` | Connection refused |
-| `python3 -c "os.setuid(0)"` | Operation not permitted |
-| `kill -9 1` | Operation not permitted |
+| `echo test > /tmp/x` | Permission denied (Landlock) |
+| `curl https://evil.com` | Connection refused (Landlock) |
+| `python3 -c "os.setuid(0)"` | Operation not permitted (seccomp) |
+| `kill -9 1` | Operation not permitted (Landlock scoping) |
+| `strace -p 1` | Operation not permitted (Landlock ptrace rules) |
+| Device ioctl (TIOCSTI) | Permission denied (Landlock ABI v5+) |
 | Fork bomb / memory exhaustion | rlimit kills process |
-| Unix socket to dbus/docker | Operation not permitted |
+| Unix socket to dbus/docker | Operation not permitted (seccomp) |
+
+### What's Allowed (by design)
+
+| Action | Why |
+|--------|-----|
+| `strace` within sandbox | Debugging sandboxed processes is safe—Landlock restricts ptrace to same domain |
+| Read `/proc`, `/sys` | Needed for system inspection; sensitive files still protected by permissions |
+| Write `/dev/shm` | POSIX shared memory for Python multiprocessing (Queue, Pool, ProcessPoolExecutor) |
 
 Even if an attacker achieves prompt injection and the model complies, the sandbox blocks exfiltration and mutation.
 
@@ -100,7 +113,7 @@ We injected a malicious payload attempting to override constraints, exfiltrate s
 1. **Model rejected it** — Claude identified the social engineering and refused
 2. **Sandbox blocked it** — Even manual execution of the attack commands failed
 
-All 9 attack vectors (file writes, network exfil, reverse shells, privilege escalation, namespace escape, ptrace) were blocked at the kernel level.
+All attack vectors (file writes, network exfil, reverse shells, privilege escalation, namespace escape, external ptrace) were blocked at the kernel level.
 
 ---
 
@@ -115,7 +128,8 @@ All 9 attack vectors (file writes, network exfil, reverse shells, privilege esca
 ## Requirements
 
 - Linux kernel 5.13+ (minimum for Landlock)
-  - 6.12+ recommended for full signal scoping (Landlock ABI v6)
+  - **6.12+ recommended** for full protection (Landlock ABI v6: signal/socket scoping)
+  - 6.10+ for device ioctl blocking (Landlock ABI v5)
   - 6.7+ for network restrictions (Landlock ABI v4)
 - Rust 1.70+
 - libseccomp-devel

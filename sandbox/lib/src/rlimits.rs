@@ -14,10 +14,13 @@ pub fn setup_rlimits(verbose: bool) -> Result<()> {
         eprintln!("[safe-shell] Set RLIMIT_AS = 512MB (max virtual memory)");
     }
 
-    // FSIZE = 0: Cannot create or extend files
-    setrlimit(Resource::RLIMIT_FSIZE, 0, 0).context("Failed to set RLIMIT_FSIZE")?;
+    // FSIZE: Limit file size to enable /dev/shm for multiprocessing
+    // Semaphores need small writes (~32 bytes). 64KB allows this while limiting damage.
+    // Landlock restricts writes to /dev/shm only, so this is defense-in-depth.
+    let max_fsize = 64 * 1024; // 64KB - enough for semaphores, small enough to limit abuse
+    setrlimit(Resource::RLIMIT_FSIZE, max_fsize, max_fsize).context("Failed to set RLIMIT_FSIZE")?;
     if verbose {
-        eprintln!("[safe-shell] Set RLIMIT_FSIZE = 0 (no file creation/extension)");
+        eprintln!("[safe-shell] Set RLIMIT_FSIZE = 64KB (for /dev/shm semaphores)");
     }
 
     // NPROC: Limit number of processes to prevent fork bombs
