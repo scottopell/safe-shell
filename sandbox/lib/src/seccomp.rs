@@ -23,10 +23,10 @@ pub fn setup_seccomp(verbose: bool, caps: &SandboxCapabilities) -> Result<()> {
     // SOCK_DGRAM = 2, but type can have flags OR'd in (SOCK_NONBLOCK, SOCK_CLOEXEC)
     // So we use a mask to check only the socket type bits (lower 4 bits)
     //
-    // NOTE: The landlock crate 0.4.4 only supports TCP (BindTcp, ConnectTcp).
-    // UDP support exists in kernel Landlock ABI v4 but isn't exposed by the crate yet.
-    // Once the crate adds AccessNet::BindUdp/ConnectUdp, we can remove this seccomp
-    // workaround and handle UDP via Landlock alongside TCP.
+    // NOTE: Landlock network access is TCP-only at the kernel level (ABI v4+).
+    // The kernel only defines LANDLOCK_ACCESS_NET_BIND_TCP and CONNECT_TCP.
+    // There are no UDP equivalents in the kernel Landlock API, so seccomp is
+    // the correct approach for blocking UDP until/unless the kernel adds support.
     const SOCK_TYPE_MASK: u64 = 0xf;
     const SOCK_DGRAM: u64 = 2;
 

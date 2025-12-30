@@ -106,7 +106,7 @@ All 9 attack vectors (file writes, network exfil, reverse shells, privilege esca
 ## Known Limitations
 
 - **DNS works** — Resolves via systemd-resolved (Unix socket), not direct UDP
-- **UDP via seccomp** — Landlock crate doesn't expose UDP yet; using seccomp as workaround
+- **UDP via seccomp** — Landlock network restrictions are TCP-only at the kernel level; seccomp blocks UDP socket creation
 - **Signal scoping (kernel <6.12)** — On older kernels, only the main bash process can signal itself; child processes cannot signal each other (e.g., `timeout` can't kill subprocesses). Kernel 6.12+ with Landlock ABI v6 fully solves this.
 
 ---
