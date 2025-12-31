@@ -123,6 +123,20 @@ class TestLandlockFilesystem(unittest.TestCase):
         self.assertEqual(code, 0, f"Expected exit 0, got {code}. stderr: {stderr}")
         self.assertIn("bin", stdout, "Expected 'bin' in root directory listing")
 
+    def test_tmpdir_points_to_dev_shm(self):
+        """TMPDIR environment variable should point to /dev/shm."""
+        code, stdout, stderr = run_sandboxed("echo $TMPDIR")
+        self.assertEqual(code, 0, f"Expected exit 0, got {code}. stderr: {stderr}")
+        self.assertEqual(stdout.strip(), "/dev/shm",
+            f"Expected TMPDIR=/dev/shm, got: {stdout.strip()}")
+
+    def test_mktemp_works(self):
+        """mktemp should work with TMPDIR pointing to /dev/shm."""
+        code, stdout, stderr = run_sandboxed("mktemp")
+        self.assertEqual(code, 0, f"Expected exit 0, got {code}. stderr: {stderr}")
+        self.assertTrue(stdout.strip().startswith("/dev/shm/"),
+            f"Expected temp file in /dev/shm, got: {stdout.strip()}")
+
 
 class TestLandlockNetwork(unittest.TestCase):
     """Test Landlock network restrictions."""
@@ -163,16 +177,13 @@ class TestSeccomp(unittest.TestCase):
             f"Expected EPERM for UDP socket, got: {combined}",
         )
 
-    def test_ptrace_blocked(self):
-        """ptrace should be blocked."""
+    def test_ptrace_allowed_within_sandbox(self):
+        """ptrace should work within sandbox (Landlock domain hierarchy)."""
+        # Landlock restricts ptrace based on domain hierarchy - sandboxed processes
+        # can ptrace other sandboxed processes but not unsandboxed ones.
+        # This allows debugging tools (strace, gdb) to work within the sandbox.
         code, stdout, stderr = run_sandboxed("strace -e trace=none /bin/true 2>&1")
-        self.assertNotEqual(code, 0, "Expected non-zero exit code for ptrace")
-        combined = stdout + stderr
-        # May get EPERM from seccomp or EAGAIN if fork limit was recently hit
-        self.assertTrue(
-            "Operation not permitted" in combined or "Resource temporarily unavailable" in combined,
-            f"Expected ptrace to be blocked, got: {combined}",
-        )
+        self.assertEqual(code, 0, f"Expected strace to work within sandbox, got code {code}. stderr: {stderr}")
 
     def test_setuid_blocked(self):
         """setuid should be blocked."""

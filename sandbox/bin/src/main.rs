@@ -72,13 +72,25 @@ fn run_child(args: &Args) -> Result<()> {
     // Execute bash
     // Using exec() replaces this process with bash - sandbox restrictions are inherited
     // --norc skips profile scripts that fail due to Landlock restrictions
+    //
+    // Set TMPDIR (and variants) to /dev/shm since /tmp is read-only under Landlock.
+    // This enables tools like mktemp, Python's tempfile module, and other utilities
+    // that need a writable temp directory. /dev/shm is tmpfs (memory-backed, ephemeral).
     let err = if let Some(ref cmd) = args.command {
         Command::new("/bin/bash")
             .args(["--norc", "-c", cmd])
+            .env("TMPDIR", "/dev/shm")
+            .env("TMP", "/dev/shm")
+            .env("TEMP", "/dev/shm")
             .exec()
     } else {
         // Interactive mode - bash auto-detects TTY
-        Command::new("/bin/bash").arg("--norc").exec()
+        Command::new("/bin/bash")
+            .arg("--norc")
+            .env("TMPDIR", "/dev/shm")
+            .env("TMP", "/dev/shm")
+            .env("TEMP", "/dev/shm")
+            .exec()
     };
 
     // exec() only returns on error

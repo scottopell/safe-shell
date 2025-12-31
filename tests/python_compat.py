@@ -31,6 +31,8 @@ test("Filesystem", "Read files", lambda: open("/etc/passwd").read()[:10])
 test("Filesystem", "List directories", lambda: len(os.listdir("/usr")))
 test("Filesystem", "Write to /tmp", lambda: open("/tmp/x", "w").write("x"))
 test("Filesystem", "Write to /dev/shm", lambda: (open("/dev/shm/x", "w").write("x"), os.unlink("/dev/shm/x"))[0])
+test("Filesystem", "tempfile.gettempdir", lambda: __import__("tempfile").gettempdir())
+test("Filesystem", "tempfile.mkstemp", lambda: (fd_name := __import__("tempfile").mkstemp(), os.close(fd_name[0]), os.unlink(fd_name[1]))[0][1])
 
 # NETWORK
 test("Network", "TCP socket create", lambda: socket.socket(socket.AF_INET, socket.SOCK_STREAM))
@@ -106,7 +108,7 @@ print("SUMMARY: " + str(passed) + " allowed, " + str(blocked) + " blocked")
 print("=" * 75)
 
 # Exit with error if unexpected results
-# Expected: 13 allowed, 9 blocked
-if passed < 13:
+# Expected: 15 allowed, 9 blocked (includes tempfile.gettempdir and tempfile.mkstemp)
+if passed < 15:
     print("WARNING: Fewer features working than expected!")
     sys.exit(1)
