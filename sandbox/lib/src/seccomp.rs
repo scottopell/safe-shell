@@ -159,9 +159,47 @@ pub fn setup_seccomp(verbose: bool, caps: &SandboxCapabilities) -> Result<()> {
         // Security hardening - block exploitation helpers
         // personality() can disable ASLR (ADDR_NO_RANDOMIZE), making exploitation easier
         ("personality", ScmpSyscall::from_name("personality")),
-        // prctl() can enable core dumps (PR_SET_DUMPABLE), set process name, etc.
-        ("prctl", ScmpSyscall::from_name("prctl")),
     ];
+
+    // prctl() filtering: surgical approach instead of blanket block
+    //
+    // prctl() is a kitchen-sink syscall with 50+ distinct operations. Blocking all
+    // of them breaks legitimate use cases:
+    //   - PR_SET_NAME (15): thread naming for debugging (ps/top)
+    //   - PR_SET_NO_NEW_PRIVS (38): security hardening - Landlock recommends this!
+    //   - PR_SET_PDEATHSIG (1): clean child termination
+    //   - PR_SET_TIMERSLACK (29): power management
+    //
+    // We block only the dangerous operations:
+    //   - PR_SET_DUMPABLE (4): could enable core dumps (info leak) or ptrace attachment
+    //   - PR_SET_MM (35): manipulate process memory map, includes PR_SET_MM_EXE_FILE
+    //     which can replace /proc/self/exe symlink
+    //
+    // This follows Chromium's approach of surgical prctl filtering rather than
+    // blanket blocking. See: https://chromium.googlesource.com/chromium/src/+/HEAD/sandbox/linux/
+    //
+    // Note: PR_SET_PTRACER (0x59616d61) is NOT blocked because Landlock already
+    // restricts ptrace based on domain hierarchy - it would be redundant.
+    const PR_SET_DUMPABLE: u64 = 4;
+    const PR_SET_MM: u64 = 35;
+
+    if let Ok(prctl_syscall) = ScmpSyscall::from_name("prctl") {
+        // Block PR_SET_DUMPABLE - prevents enabling core dumps and ptrace attachment
+        let cmp_dumpable = ScmpArgCompare::new(0, ScmpCompareOp::Equal, PR_SET_DUMPABLE);
+        filter
+            .add_rule_conditional(ScmpAction::Errno(libc::EPERM), prctl_syscall, &[cmp_dumpable])
+            .context("Failed to add prctl(PR_SET_DUMPABLE) block rule")?;
+
+        // Block PR_SET_MM - prevents memory map manipulation
+        let cmp_mm = ScmpArgCompare::new(0, ScmpCompareOp::Equal, PR_SET_MM);
+        filter
+            .add_rule_conditional(ScmpAction::Errno(libc::EPERM), prctl_syscall, &[cmp_mm])
+            .context("Failed to add prctl(PR_SET_MM) block rule")?;
+
+        if verbose {
+            eprintln!("[safe-shell] Blocked prctl operations: PR_SET_DUMPABLE, PR_SET_MM");
+        }
+    }
 
     let mut blocked_count = 0;
     for (name, syscall_result) in blocked_syscalls {

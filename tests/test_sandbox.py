@@ -206,6 +206,57 @@ class TestSeccomp(unittest.TestCase):
             f"Expected mount to be blocked, got: {combined}",
         )
 
+    def test_prctl_set_dumpable_blocked(self):
+        """prctl(PR_SET_DUMPABLE) should be blocked to prevent info leaks."""
+        # PR_SET_DUMPABLE = 4, trying to enable core dumps
+        # prctl returns -1 on error, we check the return value explicitly
+        code, stdout, stderr = run_sandboxed(
+            "python3 -c \""
+            "import ctypes; "
+            "libc = ctypes.CDLL(None, use_errno=True); "
+            "ret = libc.prctl(4, 1); "
+            "import sys; sys.exit(0 if ret == 0 else 1)\""
+        )
+        self.assertNotEqual(code, 0, f"Expected PR_SET_DUMPABLE to fail, got code {code}")
+
+    def test_prctl_set_mm_blocked(self):
+        """prctl(PR_SET_MM) should be blocked to prevent memory map manipulation."""
+        # PR_SET_MM = 35, PR_SET_MM_START_CODE = 1
+        # This could be used to manipulate /proc/self/exe or memory layout
+        code, stdout, stderr = run_sandboxed(
+            "python3 -c \""
+            "import ctypes; "
+            "libc = ctypes.CDLL(None, use_errno=True); "
+            "ret = libc.prctl(35, 1, 0x400000, 0, 0); "
+            "import sys; sys.exit(0 if ret == 0 else 1)\""
+        )
+        self.assertNotEqual(code, 0, f"Expected PR_SET_MM to fail, got code {code}")
+
+    def test_prctl_set_name_allowed(self):
+        """prctl(PR_SET_NAME) should be allowed for thread naming."""
+        # PR_SET_NAME = 15, setting thread name is benign
+        code, stdout, stderr = run_sandboxed(
+            "python3 -c \""
+            "import ctypes; "
+            "libc = ctypes.CDLL(None, use_errno=True); "
+            "ret = libc.prctl(15, b'test'); "
+            "import sys; sys.exit(0 if ret == 0 else 1)\""
+        )
+        self.assertEqual(code, 0, f"Expected PR_SET_NAME to succeed, got code {code}. stderr: {stderr}")
+
+    def test_prctl_no_new_privs_allowed(self):
+        """prctl(PR_SET_NO_NEW_PRIVS) should be allowed for security hardening."""
+        # PR_SET_NO_NEW_PRIVS = 38, this is security-positive
+        # Note: it may already be set by safe-shell, but calling it again should succeed
+        code, stdout, stderr = run_sandboxed(
+            "python3 -c \""
+            "import ctypes; "
+            "libc = ctypes.CDLL(None, use_errno=True); "
+            "ret = libc.prctl(38, 1, 0, 0, 0); "
+            "import sys; sys.exit(0 if ret == 0 else 1)\""
+        )
+        self.assertEqual(code, 0, f"Expected PR_SET_NO_NEW_PRIVS to succeed, got code {code}. stderr: {stderr}")
+
 
 class TestRlimits(unittest.TestCase):
     """Test resource limits."""
