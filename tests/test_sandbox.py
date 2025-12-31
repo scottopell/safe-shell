@@ -276,6 +276,17 @@ class TestUnixSocketBlocking(unittest.TestCase):
             f"Expected EPERM for AF_UNIX socket creation, got: {combined}",
         )
 
+    def test_socketpair_allowed(self):
+        """socketpair(AF_UNIX) should work for internal IPC (intentional)."""
+        # socketpair creates anonymous connected socket pairs for internal IPC.
+        # Unlike socket(), these cannot connect to external services like docker.sock.
+        # This is intentionally allowed for legitimate IPC patterns.
+        code, stdout, stderr = run_sandboxed(
+            "python3 -c \"import socket; a,b = socket.socketpair(); a.send(b'test'); print(b.recv(4))\""
+        )
+        self.assertEqual(code, 0, f"Expected socketpair to work, got code {code}. stderr: {stderr}")
+        self.assertIn("b'test'", stdout, f"Expected to receive test data, got: {stdout}")
+
 
 # === Custom Test Result for Pretty Output ===
 class PrettyTestResult(unittest.TestResult):

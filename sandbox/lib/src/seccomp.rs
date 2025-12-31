@@ -67,6 +67,15 @@ pub fn setup_seccomp(verbose: bool, caps: &SandboxCapabilities) -> Result<()> {
         }
     }
 
+    // NOTE: socketpair(AF_UNIX) is intentionally NOT blocked.
+    // It creates anonymous connected socket pairs for internal IPC (parent-child
+    // communication, Go runtime, etc). These sockets cannot connect to external
+    // services like docker.sock or dbus - they're purely for sandbox-internal use.
+    // Exfil is not possible because:
+    // 1. No filesystem path - cannot connect to external services
+    // 2. FD passing to outside sandbox requires Unix sockets (blocked) or ptrace
+    //    (blocked by Landlock signal scoping on kernel 6.12+)
+
     // Signal syscall filtering: only needed if Landlock signal scoping is unavailable
     //
     // On kernel 6.12+ with Landlock ABI v6, Scope::Signal handles this better:
