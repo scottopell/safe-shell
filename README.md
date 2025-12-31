@@ -67,7 +67,7 @@ Three layers of defense, all allowlist-based:
 | Layer | What it does |
 |-------|--------------|
 | **Landlock** | Read-only filesystem, no TCP connect/bind, device ioctl blocked (ABI v5+), signal/socket scoping (ABI v6+), ptrace restricted to sandbox domain |
-| **seccomp** | Blocks setuid, mount, module loading, UDP sockets, Unix sockets, personality, prctl |
+| **seccomp** | Blocks setuid, mount, module loading, UDP sockets, `socket(AF_UNIX)`, personality, prctl |
 | **rlimits** | 512MB memory, 64KB file size, 64 processes, 30s CPU, 256 open files, no core dumps |
 
 ### Kernel Feature Matrix
@@ -89,7 +89,7 @@ Three layers of defense, all allowlist-based:
 | `curl https://evil.com` | Connection refused (Landlock) |
 | `python3 -c "os.setuid(0)"` | Operation not permitted (seccomp) |
 | `kill -9 1` | Operation not permitted (Landlock scoping) |
-| `strace -p 1` | Operation not permitted (Landlock ptrace rules) |
+| `strace -p 1` | Operation not permitted (PID 1 is outside Landlock domain) |
 | Device ioctl (TIOCSTI) | Permission denied (Landlock ABI v5+) |
 | Fork bomb / memory exhaustion | rlimit kills process |
 | Unix socket to dbus/docker | Operation not permitted (seccomp) |
@@ -100,7 +100,8 @@ Three layers of defense, all allowlist-based:
 |--------|-----|
 | `strace` within sandbox | Debugging sandboxed processes is safe—Landlock restricts ptrace to same domain |
 | Read `/proc`, `/sys` | Needed for system inspection; sensitive files still protected by permissions |
-| Write `/dev/shm` | POSIX shared memory for Python multiprocessing (Queue, Pool, ProcessPoolExecutor) |
+| Write `/dev/shm` | POSIX shared memory for multiprocessing; `TMPDIR=/dev/shm` enables `mktemp`, Python `tempfile` |
+| `socketpair(AF_UNIX)` | Anonymous connected pairs for internal IPC (Go runtime, subprocess comm)—cannot reach external services |
 
 Even if an attacker achieves prompt injection and the model complies, the sandbox blocks exfiltration and mutation.
 
@@ -120,7 +121,9 @@ All attack vectors (file writes, network exfil, reverse shells, privilege escala
 ## Known Limitations
 
 - **No DNS** — Unix sockets are blocked, so systemd-resolved/nscd lookups fail. Use IP addresses directly.
-- **No Unix socket IPC** — All AF_UNIX sockets blocked to prevent host service communication (dbus, docker, etc.)
+- **No external Unix sockets** — `socket(AF_UNIX)` blocked to prevent host service communication (dbus, docker). Internal IPC via `socketpair()` still works. Future: [xdg-dbus-proxy](https://github.com/flatpak/xdg-dbus-proxy) could enable filtered dbus access if needed.
+- **Go binaries fail** — Go's runtime requires >512MB virtual memory for its allocator. Current `RLIMIT_AS=512MB` causes immediate crash. Python/Perl/shell work fine.
+- **No directories in /dev/shm** — Can create files but not subdirectories (Landlock `MakeReg` without `MakeDir`). `tempfile.mkstemp()` works, `tempfile.mkdtemp()` fails.
 - **Signal scoping (kernel <6.12)** — On older kernels, only the main bash process can signal itself; child processes cannot signal each other (e.g., `timeout` can't kill subprocesses). Kernel 6.12+ with Landlock ABI v6 fully solves this.
 
 ---
