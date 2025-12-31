@@ -120,11 +120,23 @@ All attack vectors (file writes, network exfil, reverse shells, privilege escala
 
 ## Known Limitations
 
-- **No DNS** — Unix sockets are blocked, so systemd-resolved/nscd lookups fail. Use IP addresses directly.
-- **No external Unix sockets** — `socket(AF_UNIX)` blocked to prevent host service communication (dbus, docker). Internal IPC via `socketpair()` still works. Future: [xdg-dbus-proxy](https://github.com/flatpak/xdg-dbus-proxy) could enable filtered dbus access if needed.
-- **Go binaries fail** — Go's runtime requires >512MB virtual memory for its allocator. Current `RLIMIT_AS=512MB` causes immediate crash. Python/Perl/shell work fine.
-- **No directories in /dev/shm** — Can create files but not subdirectories (Landlock `MakeReg` without `MakeDir`). `tempfile.mkstemp()` works, `tempfile.mkdtemp()` fails.
-- **Signal scoping (kernel <6.12)** — On older kernels, only the main bash process can signal itself; child processes cannot signal each other (e.g., `timeout` can't kill subprocesses). Kernel 6.12+ with Landlock ABI v6 fully solves this.
+### Runtime Compatibility
+
+| Runtime | Status | Issue | Fix |
+|---------|--------|-------|-----|
+| Python, Perl, Ruby, LuaJIT | ✅ Works | — | — |
+| Go | ❌ Fails | Requires >512MB VA for allocator | `RLIMIT_AS=2GB` |
+| Node.js | ⚠️ Unstable | V8 isolates need ~256MB each | `RLIMIT_AS=2GB` (still unstable, ~4 workers max) |
+| Erlang/BEAM | ❌ Fails | Needs 1GB VA + 32MB shared memory | `RLIMIT_AS=2GB`, `RLIMIT_NPROC=256`, `RLIMIT_FSIZE=64MB` |
+
+### Other Limitations
+
+| Limitation | Description | Workaround |
+|------------|-------------|------------|
+| No DNS | Unix sockets blocked, systemd-resolved/nscd fail | Use IP addresses directly |
+| No external Unix sockets | `socket(AF_UNIX)` blocked for security | `socketpair()` works for internal IPC |
+| No dirs in /dev/shm | Landlock allows `MakeReg` but not `MakeDir` | Use flat files (`mkstemp` works, `mkdtemp` fails) |
+| Signal scoping (kernel <6.12) | Child processes can't signal each other | Upgrade to kernel 6.12+ |
 
 ---
 
